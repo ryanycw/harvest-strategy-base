@@ -2,14 +2,12 @@
 pragma solidity 0.8.21;
 pragma experimental ABIEncoderV2;
 
-import "@openzeppelin/contracts-upgradeable/math/MathUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/math/SafeMathUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/SafeERC20Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC721/IERC721Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721HolderUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
+import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgradeable.sol";
+import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import "./interface/IStrategy.sol";
 import "./interface/IController.sol";
 import "./interface/IUpgradeSource.sol";
@@ -23,9 +21,8 @@ import "./interface/concentrated-liquidity/LiquidityAmounts.sol";
 import "./interface/IUniversalLiquidator.sol";
 
 contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, ControllableInit, CLVaultStorage {
-    using SafeERC20Upgradeable for IERC20Upgradeable;
-    using AddressUpgradeable for address;
-    using SafeMathUpgradeable for uint256;
+    using Address for address;
+    using SafeERC20 for IERC20;
 
     /**
      * Caller has exchanged assets for shares, and transferred those shares to owner.
@@ -60,7 +57,7 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
     {
         ControllableInit.initialize(_storage);
 
-        IERC721Upgradeable(_posManager).transferFrom(msg.sender, address(this), _posId);
+        IERC721(_posManager).transferFrom(msg.sender, address(this), _posId);
 
         (
             ,
@@ -76,7 +73,7 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
             ,
         ) = INonfungiblePositionManager(_posManager).positions(_posId);
 
-        uint256 positionWidth = uint256(_tickUpper - _tickLower).div(uint256(_tickSpacing));
+        uint256 positionWidth = uint256(int256(_tickUpper - _tickLower)) / uint256(int256(_tickSpacing));
         require(_targetWidth <= positionWidth, "Target");
 
         CLVaultStorage.initialize(_posId, _posManager, positionWidth, _targetWidth);
@@ -89,7 +86,6 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
                 abi.encodePacked("fCL_", ERC20Upgradeable(_token0).symbol(), "_", ERC20Upgradeable(_token1).symbol())
             )
         );
-        _setupDecimals(18);
 
         _setToken0(_token0);
         _setToken1(_token1);
@@ -194,7 +190,7 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
     function getPricePerFullShare() external view returns (uint256) {
         return totalSupply() == 0
             ? _underlyingUnit()
-            : _underlyingUnit().mul(underlyingBalanceWithInvestment()).div(totalSupply());
+            : _underlyingUnit() * underlyingBalanceWithInvestment() / totalSupply();
     }
 
     /* get the user's share (in underlying)
@@ -203,7 +199,7 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
         if (totalSupply() == 0) {
             return 0;
         }
-        return underlyingBalanceWithInvestment().mul(balanceOf(holder)).div(totalSupply());
+        return underlyingBalanceWithInvestment() * balanceOf(holder) / totalSupply();
     }
 
     function nextStrategy() external view returns (address) {
@@ -225,7 +221,7 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
      */
     function announceStrategyUpdate(address _strategy) external onlyControllerOrGovernance {
         // records a new timestamp
-        uint256 when = block.timestamp.add(nextImplementationDelay());
+        uint256 when = block.timestamp + nextImplementationDelay();
         _setNextStrategyTimestamp(when);
         _setNextStrategy(_strategy);
         emit StrategyAnnounced(_strategy, when);
@@ -260,7 +256,7 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
         uint256 _posId = _posId();
         bool nftInVault = INonfungiblePositionManager(_posManager).ownerOf(_posId) == address(this);
         if (nftInVault) {
-            IERC721Upgradeable(_posManager).transferFrom(address(this), _strategy(), _posId);
+            IERC721(_posManager).transferFrom(address(this), _strategy(), _posId);
         }
     }
 
@@ -302,16 +298,14 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
 
         address _token0 = _token0();
         address _token1 = _token1();
-        IERC20Upgradeable(_token0).safeTransferFrom(sender, address(this), amount0);
-        IERC20Upgradeable(_token1).safeTransferFrom(sender, address(this), amount1);
+        IERC20(_token0).safeTransferFrom(sender, address(this), amount0);
+        IERC20(_token1).safeTransferFrom(sender, address(this), amount1);
 
         uint256 liquidityBefore = underlyingBalanceWithInvestment();
 
         address _posManager = _posManager();
-        IERC20Upgradeable(_token0).safeApprove(_posManager, 0);
-        IERC20Upgradeable(_token0).safeApprove(_posManager, amount0);
-        IERC20Upgradeable(_token1).safeApprove(_posManager, 0);
-        IERC20Upgradeable(_token1).safeApprove(_posManager, amount1);
+        IERC20(_token0).safeIncreaseAllowance(_posManager, amount0);
+        IERC20(_token1).safeIncreaseAllowance(_posManager, amount1);
 
         (uint128 _liquidity,,) = INonfungiblePositionManager(_posManager).increaseLiquidity(
             INonfungiblePositionManager.IncreaseLiquidityParams({
@@ -325,7 +319,7 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
         );
 
         uint256 toMint =
-            totalSupply() == 0 ? uint256(_liquidity) : uint256(_liquidity).mul(totalSupply()).div(liquidityBefore);
+            totalSupply() == 0 ? uint256(_liquidity) : uint256(_liquidity) * totalSupply() / liquidityBefore;
 
         require(toMint >= amountOutMin, "slippage");
 
@@ -354,11 +348,11 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
             IStrategy(_strategy()).withdrawAllToVault(false);
         }
 
-        uint128 liquidityShare = uint128(underlyingBalanceWithInvestment().mul(numberOfShares).div(totalSupply()));
+        uint128 liquidityShare = uint128(underlyingBalanceWithInvestment() * numberOfShares / totalSupply());
 
         if (msg.sender != owner) {
             uint256 currentAllowance = allowance(owner, msg.sender);
-            if (currentAllowance != uint256(-1)) {
+            if (currentAllowance != type(uint256).max) {
                 require(currentAllowance >= numberOfShares, "ERC20: transfer amount exceeds allowance");
                 _approve(owner, msg.sender, currentAllowance - numberOfShares);
             }
@@ -412,13 +406,13 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
     function _transferLeftOverTo(address _to) internal {
         address _token0 = _token0();
         address _token1 = _token1();
-        uint256 balance0 = IERC20Upgradeable(_token0).balanceOf(address(this));
-        uint256 balance1 = IERC20Upgradeable(_token1).balanceOf(address(this));
+        uint256 balance0 = IERC20(_token0).balanceOf(address(this));
+        uint256 balance1 = IERC20(_token1).balanceOf(address(this));
         if (balance0 > 0) {
-            IERC20Upgradeable(_token0).safeTransfer(_to, balance0);
+            IERC20(_token0).safeTransfer(_to, balance0);
         }
         if (balance1 > 0) {
-            IERC20Upgradeable(_token1).safeTransfer(_to, balance1);
+            IERC20(_token1).safeTransfer(_to, balance1);
         }
     }
 
@@ -471,7 +465,7 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
             int256 currentTick = int256(getCurrentTick());
             uint256 diff =
                 middleTick > currentTick ? uint256(middleTick - currentTick) : uint256(currentTick - middleTick);
-            uint256 maxDiff = _targetWidth().mul(uint256(_tickSpacing())).div(2);
+            uint256 maxDiff = _targetWidth() * uint256(int256(_tickSpacing())) / 2;
 
             shouldRebalance = diff > maxDiff;
         }
@@ -487,7 +481,7 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
         uint256 oldPosId = _posId();
         int24 currentTick = getCurrentTick();
 
-        (int24 tickLowerNew, int24 tickUpperNew) = _getNewTickLimits(currentTick, int24(_posWidth));
+        (int24 tickLowerNew, int24 tickUpperNew) = _getNewTickLimits(currentTick, int24(int256(_posWidth)));
         if (tickLowerNew == _tickLower() && tickUpperNew == _tickUpper()) {
             return;
         }
@@ -504,15 +498,13 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
 
         if (currentWeight0 > newWeight0) {
             bool zeroForOne = true;
-            uint256 toSwap = IERC20Upgradeable(_token0()).balanceOf(address(this)).mul(currentWeight0.sub(newWeight0))
-                .div(currentWeight0);
+            uint256 toSwap = IERC20(_token0()).balanceOf(address(this)) * (currentWeight0 - newWeight0) / currentWeight0;
             if (toSwap > 0) {
                 _swap(zeroForOne, toSwap);
             }
         } else {
             bool zeroForOne = false;
-            uint256 toSwap = IERC20Upgradeable(_token1()).balanceOf(address(this)).mul(currentWeight1.sub(newWeight1))
-                .div(currentWeight1);
+            uint256 toSwap = IERC20(_token1()).balanceOf(address(this)) * (currentWeight1 - newWeight1) / currentWeight1;
             if (toSwap > 0) {
                 _swap(zeroForOne, toSwap);
             }
@@ -540,13 +532,11 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
     function _createNewPosition(int24 _tickLower, int24 _tickUpper) internal returns (uint256 tokenId) {
         address _token0 = _token0();
         address _token1 = _token1();
-        uint256 amount0 = IERC20Upgradeable(_token0).balanceOf(address(this));
-        uint256 amount1 = IERC20Upgradeable(_token1).balanceOf(address(this));
+        uint256 amount0 = IERC20(_token0).balanceOf(address(this));
+        uint256 amount1 = IERC20(_token1).balanceOf(address(this));
         address _posManager = _posManager();
-        IERC20Upgradeable(_token0).safeApprove(_posManager, 0);
-        IERC20Upgradeable(_token0).safeApprove(_posManager, amount0);
-        IERC20Upgradeable(_token1).safeApprove(_posManager, 0);
-        IERC20Upgradeable(_token1).safeApprove(_posManager, amount1);
+        IERC20(_token0).safeIncreaseAllowance(_posManager, amount0);
+        IERC20(_token1).safeIncreaseAllowance(_posManager, amount1);
 
         (tokenId,,,) = INonfungiblePositionManager(_posManager).mint(
             INonfungiblePositionManager.MintParams({
@@ -571,12 +561,10 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
         address _token1 = _token1();
         address _universalLiquidator = IController(controller()).universalLiquidator();
         if (_zeroForOne) {
-            IERC20Upgradeable(_token0).safeApprove(_universalLiquidator, 0);
-            IERC20Upgradeable(_token0).safeApprove(_universalLiquidator, _amountIn);
+            IERC20(_token0).safeIncreaseAllowance(_universalLiquidator, _amountIn);
             IUniversalLiquidator(_universalLiquidator).swap(_token0, _token1, _amountIn, 1, address(this));
         } else {
-            IERC20Upgradeable(_token1).safeApprove(_universalLiquidator, 0);
-            IERC20Upgradeable(_token1).safeApprove(_universalLiquidator, _amountIn);
+            IERC20(_token1).safeIncreaseAllowance(_universalLiquidator, _amountIn);
             IUniversalLiquidator(_universalLiquidator).swap(_token1, _token0, _amountIn, 1, address(this));
         }
     }
@@ -587,7 +575,7 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
         returns (uint256 weight0, uint256 weight1)
     {
         uint256 sqrtPrice = uint256(getSqrtPriceX96());
-        uint256 price0In1 = sqrtPrice.mul(sqrtPrice).mul(1e18).div(uint256(2 ** (96 * 2)));
+        uint256 price0In1 = sqrtPrice * sqrtPrice * 1e18 / (uint256(2 ** (96 * 2)));
         (uint256 amount0, uint256 amount1) = LiquidityAmounts.getAmountsForLiquidity(
             getSqrtPriceX96(),
             TickMath.getSqrtRatioAtTick(_tickLower),
@@ -595,19 +583,19 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
             uint128(1e18)
         );
 
-        uint256 totalBalanceIn1 = amount0.mul(price0In1).div(1e18).add(amount1);
-        weight0 = amount0.mul(price0In1).div(totalBalanceIn1);
-        weight1 = amount1.mul(1e18).div(totalBalanceIn1);
+        uint256 totalBalanceIn1 = amount0 * price0In1 / 1e18 + amount1;
+        weight0 = amount0 * price0In1 / totalBalanceIn1;
+        weight1 = amount1 * 1e18 / totalBalanceIn1;
         if (weight0 == 0) {
             weight1 = 1e18;
         }
         if (weight1 == 0) {
             weight0 = 1e18;
         }
-        uint256 totalWeight = weight0.add(weight1);
+        uint256 totalWeight = weight0 + weight1;
         if (totalWeight != 1e18) {
-            weight0 = weight0.mul(1e18).div(totalWeight);
-            weight1 = uint256(1e18).sub(weight0);
+            weight0 = weight0 * 1e18 / totalWeight;
+            weight1 = 1e18 - weight0;
         }
     }
 
@@ -644,7 +632,7 @@ contract CLVault is ERC20Upgradeable, ERC721HolderUpgradeable, IUpgradeSource, C
      */
     function scheduleUpgrade(address impl) public onlyGovernance {
         _setNextImplementation(impl);
-        _setNextImplementationTimestamp(block.timestamp.add(nextImplementationDelay()));
+        _setNextImplementationTimestamp(block.timestamp + nextImplementationDelay());
     }
 
     function shouldUpgrade() external view override returns (bool, address) {

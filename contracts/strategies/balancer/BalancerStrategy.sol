@@ -2,9 +2,8 @@
 pragma solidity 0.8.21;
 pragma experimental ABIEncoderV2;
 
-import "@openzeppelin/contracts/math/Math.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import "../../base/interface/IUniversalLiquidator.sol";
 import "../../base/interface/IVault.sol";
 import "../../base/upgradability/BaseUpgradeableStrategy.sol";
@@ -13,7 +12,6 @@ import "../../base/interface/balancer/Gauge.sol";
 import "../../base/interface/balancer/IBalancerMinter.sol";
 
 contract BalancerStrategy is BaseUpgradeableStrategy {
-    using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
     address public constant weth = address(0x4200000000000000000000000000000000000006);
@@ -76,8 +74,7 @@ contract BalancerStrategy is BaseUpgradeableStrategy {
         address underlying_ = underlying();
         address rewardPool_ = rewardPool();
         uint256 entireBalance = IERC20(underlying_).balanceOf(address(this));
-        IERC20(underlying_).safeApprove(rewardPool_, 0);
-        IERC20(underlying_).safeApprove(rewardPool_, entireBalance);
+        IERC20(underlying_).safeIncreaseAllowance(rewardPool_, entireBalance);
         Gauge(rewardPool_).deposit(entireBalance);
     }
 
@@ -121,8 +118,7 @@ contract BalancerStrategy is BaseUpgradeableStrategy {
     function _approveIfNeed(address token, address spender, uint256 amount) internal {
         uint256 allowance = IERC20(token).allowance(address(this), spender);
         if (amount > allowance) {
-            IERC20(token).safeApprove(spender, 0);
-            IERC20(token).safeApprove(spender, amount);
+            IERC20(token).safeIncreaseAllowance(spender, amount);
         }
     }
 
@@ -167,8 +163,7 @@ contract BalancerStrategy is BaseUpgradeableStrategy {
                 continue;
             }
             if (token != _rewardToken) {
-                IERC20(token).safeApprove(_universalLiquidator, 0);
-                IERC20(token).safeApprove(_universalLiquidator, rewardBalance);
+                IERC20(token).safeIncreaseAllowance(_universalLiquidator, rewardBalance);
                 IUniversalLiquidator(_universalLiquidator).swap(token, _rewardToken, rewardBalance, 1, address(this));
             }
         }
@@ -183,8 +178,7 @@ contract BalancerStrategy is BaseUpgradeableStrategy {
 
         address _depositToken = depositToken();
         if (_depositToken != _rewardToken) {
-            IERC20(_rewardToken).safeApprove(_universalLiquidator, 0);
-            IERC20(_rewardToken).safeApprove(_universalLiquidator, remainingRewardBalance);
+            IERC20(_rewardToken).safeIncreaseAllowance(_universalLiquidator, remainingRewardBalance);
             IUniversalLiquidator(_universalLiquidator).swap(
                 _rewardToken, _depositToken, remainingRewardBalance, 1, address(this)
             );
@@ -225,7 +219,7 @@ contract BalancerStrategy is BaseUpgradeableStrategy {
         if (_amount > entireBalance) {
             // While we have the check above, we still using SafeMath below
             // for the peace of mind (in case something gets changed in between)
-            uint256 needToWithdraw = _amount.sub(entireBalance);
+            uint256 needToWithdraw = _amount - entireBalance;
             uint256 toWithdraw = Math.min(_rewardPoolBalance(), needToWithdraw);
             _withdrawUnderlyingFromPool(toWithdraw);
         }
@@ -244,7 +238,7 @@ contract BalancerStrategy is BaseUpgradeableStrategy {
         // both are in the units of "underlying"
         // The second part is needed because there is the emergency exit mechanism
         // which would break the assumption that all the funds are always inside of the reward pool
-        return _rewardPoolBalance().add(IERC20(underlying()).balanceOf(address(this)));
+        return _rewardPoolBalance() + IERC20(underlying()).balanceOf(address(this));
     }
 
     /*

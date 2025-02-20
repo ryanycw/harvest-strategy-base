@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Unlicense
 pragma solidity 0.8.21;
 
-import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import "./inheritance/Governable.sol";
@@ -19,7 +18,6 @@ import "./inheritance/Controllable.sol";
  */
 contract RewardForwarder is Controllable {
     using SafeERC20 for IERC20;
-    using SafeMath for uint256;
 
     address public constant iFARM = address(0xE7798f023fC62146e8Aa1b36Da45fb70855a77Ea);
 
@@ -37,15 +35,14 @@ contract RewardForwarder is Controllable {
         address _controller = controller();
         address liquidator = IController(_controller).universalLiquidator();
 
-        uint256 totalTransferAmount = _profitSharingFee.add(_strategistFee).add(_platformFee);
+        uint256 totalTransferAmount = _profitSharingFee + _strategistFee + _platformFee;
         require(totalTransferAmount > 0, "totalTransferAmount should not be 0");
         IERC20(_token).safeTransferFrom(msg.sender, address(this), totalTransferAmount);
 
         address _targetToken = IController(_controller).targetToken();
 
         if (_token != _targetToken) {
-            IERC20(_token).safeApprove(liquidator, 0);
-            IERC20(_token).safeApprove(liquidator, _platformFee);
+            IERC20(_token).safeIncreaseAllowance(liquidator, _platformFee);
 
             uint256 amountOutMin = 1;
 
@@ -59,8 +56,7 @@ contract RewardForwarder is Controllable {
         }
 
         if (_token != iFARM) {
-            IERC20(_token).safeApprove(liquidator, 0);
-            IERC20(_token).safeApprove(liquidator, _profitSharingFee.add(_strategistFee));
+            IERC20(_token).safeIncreaseAllowance(liquidator, _profitSharingFee + _strategistFee);
 
             uint256 amountOutMin = 1;
 

@@ -2,9 +2,8 @@
 pragma solidity 0.8.21;
 pragma experimental ABIEncoderV2;
 
-import "@openzeppelin/contracts/math/Math.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import "../../base/interface/IUniversalLiquidator.sol";
 import "../../base/interface/IVault.sol";
 import "../../base/upgradability/BaseUpgradeableStrategy.sol";
@@ -17,7 +16,6 @@ import "../../base/interface/seamless/DataTypes.sol";
 import "../../base/interface/balancer/IBVault.sol";
 
 contract SeamlessFoldStrategy is BaseUpgradeableStrategy {
-    using SafeMath for uint256;
     using SafeERC20 for IERC20;
     using ReserveConfiguration for DataTypes.ReserveConfigurationMap;
 

@@ -4,15 +4,10 @@ pragma solidity 0.8.21;
 import "../inheritance/Controllable.sol";
 import "../interface/IGlobalIncentivesHelper.sol";
 
-import "@openzeppelin/contracts-upgradeable/math/SafeMathUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/SafeERC20Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
 contract GlobalIncentivesExecutor is Controllable {
-    using SafeMathUpgradeable for uint256;
-    using SafeERC20Upgradeable for IERC20Upgradeable;
-
     mapping(address => bool) public notifier;
     mapping(address => bool) public changer;
 
@@ -54,12 +49,12 @@ contract GlobalIncentivesExecutor is Controllable {
 
     function execute() external onlyNotifier {
         require(mostRecentWeeksEmissionTimestamp > 0, "mostRecentWeeksEmissionTimestamp was never configured");
-        require(mostRecentWeeksEmissionTimestamp.add(1 weeks) <= block.timestamp, "too early");
+        require(mostRecentWeeksEmissionTimestamp + (1 weeks) <= block.timestamp, "too early");
         for (uint256 i = 0; i < tokens.length; i++) {
-            uint256 globalIncentivesHelperBalance = IERC20Upgradeable(tokens[i]).balanceOf(globalIncentivesHelper);
+            uint256 globalIncentivesHelperBalance = IERC20(tokens[i]).balanceOf(globalIncentivesHelper);
             require(globalIncentivesHelperBalance >= totals[i], "not enough balance");
         }
-        mostRecentWeeksEmissionTimestamp = mostRecentWeeksEmissionTimestamp.add(1 weeks);
+        mostRecentWeeksEmissionTimestamp = mostRecentWeeksEmissionTimestamp + (1 weeks);
         IGlobalIncentivesHelper(globalIncentivesHelper).notifyPools(tokens, totals, mostRecentWeeksEmissionTimestamp);
     }
 

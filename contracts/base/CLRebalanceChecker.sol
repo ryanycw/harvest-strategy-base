@@ -21,7 +21,7 @@ contract CLRebalanceChecker is Controllable {
 
     function removeVault(address _target) public onlyGovernance {
         uint256 i = getVaultIndex(_target);
-        require(i != uint256(-1), "Vault does not exists");
+        require(i != type(uint256).max, "Vault does not exists");
         uint256 lastIndex = clVaults.length - 1;
 
         // swap
@@ -45,7 +45,7 @@ contract CLRebalanceChecker is Controllable {
                 return i;
             }
         }
-        return uint256(-1);
+        return type(uint256).max;
     }
 
     function checker() external view returns (bool canExec, bytes memory execPayload) {

@@ -6,15 +6,12 @@ import "./interface/ICLVault.sol";
 import "./interface/IController.sol";
 import "./interface/IUniversalLiquidator.sol";
 import "./inheritance/Controllable.sol";
-
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract CLWrapper is Controllable, ReentrancyGuard, IERC4626 {
     using SafeERC20 for IERC20;
-    using SafeMath for uint256;
 
     address internal _vault;
     address internal _asset;
@@ -57,20 +54,20 @@ contract CLWrapper is Controllable, ReentrancyGuard, IERC4626 {
         uint256 _totalAssets;
         if (_asset == ICLVault(_vault).token0()) {
             if (weight0 > weight1) {
-                _totalAssets = amount0.mul(1e18).div(weight0);
+                _totalAssets = amount0 * 1e18 / weight0;
             } else {
                 uint256 sqrtPrice = uint256(ICLVault(_vault).getSqrtPriceX96());
-                uint256 price0In1 = sqrtPrice.mul(sqrtPrice).mul(1e18).div(uint256(2 ** (96 * 2)));
-                uint256 price1In0 = uint256(1e36).div(price0In1);
-                _totalAssets = amount1.mul(price1In0).div(weight1);
+                uint256 price0In1 = sqrtPrice * sqrtPrice * 1e18 / uint256(2 ** (96 * 2));
+                uint256 price1In0 = uint256(1e36) / price0In1;
+                _totalAssets = amount1 * price1In0 / weight1;
             }
         } else {
             if (weight1 > weight0) {
-                _totalAssets = amount1.mul(1e18).div(weight1);
+                _totalAssets = amount1 * 1e18 / weight1;
             } else {
                 uint256 sqrtPrice = uint256(ICLVault(_vault).getSqrtPriceX96());
-                uint256 price0In1 = sqrtPrice.mul(sqrtPrice).mul(1e18).div(uint256(2 ** (96 * 2)));
-                _totalAssets = amount0.mul(price0In1).div(weight0);
+                uint256 price0In1 = sqrtPrice * sqrtPrice * 1e18 / uint256(2 ** (96 * 2));
+                _totalAssets = amount0 * price0In1 / weight0;
             }
         }
         return _totalAssets;
@@ -85,11 +82,11 @@ contract CLWrapper is Controllable, ReentrancyGuard, IERC4626 {
     }
 
     function maxDeposit(address /*caller*/ ) external view override returns (uint256) {
-        return uint256(-1);
+        return type(uint256).max;
     }
 
     function previewDeposit(uint256 _assets) public view override returns (uint256) {
-        return convertToShares(_assets).mul(995).div(1000);
+        return convertToShares(_assets) * 995 / 1000;
     }
 
     function deposit(uint256 _assets, address _receiver) external override nonReentrant defense returns (uint256) {
@@ -137,7 +134,7 @@ contract CLWrapper is Controllable, ReentrancyGuard, IERC4626 {
     }
 
     function previewRedeem(uint256 _shares) public view override returns (uint256) {
-        return convertToAssets(_shares).mul(995).div(1000);
+        return convertToAssets(_shares) * 995 / 1000;
     }
 
     function redeem(uint256 _shares, address _receiver, address _owner)
@@ -165,17 +162,16 @@ contract CLWrapper is Controllable, ReentrancyGuard, IERC4626 {
     // ========================= Conversion Functions =========================
 
     function convertToAssets(uint256 _shares) public view returns (uint256) {
-        return totalAssets() == 0 || totalSupply() == 0 ? _shares : _shares.mul(totalAssets()).div(totalSupply());
+        return totalAssets() == 0 || totalSupply() == 0 ? _shares : _shares * totalAssets() / totalSupply();
     }
 
     function convertToShares(uint256 _assets) public view returns (uint256) {
-        return totalAssets() == 0 || totalSupply() == 0 ? _assets : _assets.mul(totalSupply()).div(totalAssets());
+        return totalAssets() == 0 || totalSupply() == 0 ? _assets : _assets * totalSupply() / totalAssets();
     }
 
     function _swap(address tokenIn, address tokenOut, uint256 _amountIn) internal {
         address _universalLiquidator = IController(controller()).universalLiquidator();
-        IERC20(tokenIn).safeApprove(_universalLiquidator, 0);
-        IERC20(tokenIn).safeApprove(_universalLiquidator, _amountIn);
+        IERC20(tokenIn).safeIncreaseAllowance(_universalLiquidator, _amountIn);
         IUniversalLiquidator(_universalLiquidator).swap(tokenIn, tokenOut, _amountIn, 1, address(this));
     }
 
@@ -190,9 +186,9 @@ contract CLWrapper is Controllable, ReentrancyGuard, IERC4626 {
         {
             (uint256 weight0, uint256 weight1) = ICLVault(_vault).getCurrentTokenWeights();
             if (isToken0) {
-                _swap(ICLVault(_vault).token0(), ICLVault(_vault).token1(), _assets.mul(weight1).div(1e18));
+                _swap(ICLVault(_vault).token0(), ICLVault(_vault).token1(), _assets * weight1 / 1e18);
             } else {
-                _swap(ICLVault(_vault).token1(), ICLVault(_vault).token0(), _assets.mul(weight0).div(1e18));
+                _swap(ICLVault(_vault).token1(), ICLVault(_vault).token0(), _assets * weight0 / 1e18);
             }
         }
 
@@ -200,16 +196,14 @@ contract CLWrapper is Controllable, ReentrancyGuard, IERC4626 {
         address token1 = ICLVault(_vault).token1();
         uint256 amount0 = IERC20(token0).balanceOf(address(this));
         uint256 amount1 = IERC20(token1).balanceOf(address(this));
-        IERC20(token0).safeApprove(_vault, 0);
-        IERC20(token0).safeApprove(_vault, amount0);
-        IERC20(token1).safeApprove(_vault, 0);
-        IERC20(token1).safeApprove(_vault, amount1);
+        IERC20(token0).safeIncreaseAllowance(_vault, amount0);
+        IERC20(token1).safeIncreaseAllowance(_vault, amount1);
 
         uint256 amountOut = ICLVault(_vault).deposit(amount0, amount1, _minOut, _receiver);
 
         uint256 left0 = IERC20(token0).balanceOf(address(this));
         uint256 left1 = IERC20(token1).balanceOf(address(this));
-        uint256 amountIn = isToken0 ? _assets.sub(left0) : _assets.sub(left1);
+        uint256 amountIn = isToken0 ? _assets - left0 : _assets - left1;
         emit Deposit(_sender, _receiver, amountIn, amountOut);
 
         _transferLeftOverTo(_receiver);

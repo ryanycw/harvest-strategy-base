@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Unlicense
-pragma solidity 0.6.12;
-pragma experimental ABIEncoderV2;
+pragma solidity 0.8.21;
 
-import "@openzeppelin/contracts/math/Math.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import "../../base/interface/IUniversalLiquidator.sol";
 import "../../base/interface/IVault.sol";
 import "../../base/upgradability/BaseUpgradeableStrategy.sol";
@@ -13,10 +11,14 @@ import "../../base/interface/moonwell/ComptrollerInterface.sol";
 import "../../base/interface/balancer/IBVault.sol";
 import "../../base/interface/weth/IWETH.sol";
 
+import {Helpers} from "./utils/Helpers.sol";
+import {Setters} from "./utils/Setters.sol";
+import {Getters} from "./utils/Getters.sol";
+import {Checks} from "./utils/Checks.sol";
 import {ConstantsLib} from "./libraries/ConstantsLib.sol";
+import {ErrorsLib} from "./libraries/ErrorsLib.sol";
 
-contract MorphoLoopingStrategy is BaseUpgradeableStrategy {
-    using SafeMath for uint256;
+contract MorphoLoopingStrategy is BaseUpgradeableStrategy, Helpers, Setters, Getters, Checks {
     using SafeERC20 for IERC20;
 
     uint256 public suppliedInUnderlying;
@@ -25,26 +27,41 @@ contract MorphoLoopingStrategy is BaseUpgradeableStrategy {
     bool internal makingFlashDeposit;
     bool internal makingFlashWithdrawal;
 
-    // this would be reset on each upgrade
+    /// @dev Reset on each upgrade
     address[] public rewardTokens;
 
     constructor() public BaseUpgradeableStrategy() {
-        assert(ConstantsLib.MTOKEN_SLOT == bytes32(uint256(keccak256("eip1967.strategyStorage.mToken")) - 1));
-        assert(
+        if (ConstantsLib.MTOKEN_SLOT != bytes32(uint256(keccak256("eip1967.strategyStorage.mToken")) - 1)) {
+            revert ErrorsLib.MTOKEN_SLOT_NOT_CORRECT();
+        }
+
+        if (
             ConstantsLib.COLLATERALFACTORNUMERATOR_SLOT
-                == bytes32(uint256(keccak256("eip1967.strategyStorage.collateralFactorNumerator")) - 1)
-        );
-        assert(
+                != bytes32(uint256(keccak256("eip1967.strategyStorage.collateralFactorNumerator")) - 1)
+        ) {
+            revert ErrorsLib.COLLATERALFACTORNUMERATOR_SLOT_NOT_CORRECT();
+        }
+
+        if (
             ConstantsLib.FACTORDENOMINATOR_SLOT
-                == bytes32(uint256(keccak256("eip1967.strategyStorage.factorDenominator")) - 1)
-        );
-        assert(
+                != bytes32(uint256(keccak256("eip1967.strategyStorage.factorDenominator")) - 1)
+        ) {
+            revert ErrorsLib.FACTORDENOMINATOR_SLOT_NOT_CORRECT();
+        }
+
+        if (
             ConstantsLib.BORROWTARGETFACTORNUMERATOR_SLOT
-                == bytes32(uint256(keccak256("eip1967.strategyStorage.borrowTargetFactorNumerator")) - 1)
-        );
-        assert(ConstantsLib.FOLD_SLOT == bytes32(uint256(keccak256("eip1967.strategyStorage.fold")) - 1));
+                != bytes32(uint256(keccak256("eip1967.strategyStorage.borrowTargetFactorNumerator")) - 1)
+        ) {
+            revert ErrorsLib.BORROWTARGETFACTORNUMERATOR_SLOT_NOT_CORRECT();
+        }
+
+        if (ConstantsLib.FOLD_SLOT != bytes32(uint256(keccak256("eip1967.strategyStorage.fold")) - 1)) {
+            revert ErrorsLib.FOLD_SLOT_NOT_CORRECT();
+        }
     }
 
+    /// Checkpoint
     function initializeBaseStrategy(
         address _storage,
         address _underlying,
@@ -83,11 +100,6 @@ contract MorphoLoopingStrategy is BaseUpgradeableStrategy {
         suppliedInUnderlying = MTokenInterface(_mToken).balanceOfUnderlying(address(this));
         // amount we borrowed
         borrowedInUnderlying = MTokenInterface(_mToken).borrowBalanceCurrent(address(this));
-    }
-
-    function depositArbCheck() public pure returns (bool) {
-        // there's no arb here.
-        return true;
     }
 
     function unsalvagableTokens(address token) public view returns (bool) {
@@ -563,10 +575,6 @@ contract MorphoLoopingStrategy is BaseUpgradeableStrategy {
         return getBoolean(ConstantsLib.FOLD_SLOT);
     }
 
-    function _setMToken(address _target) internal {
-        setAddress(ConstantsLib.MTOKEN_SLOT, _target);
-    }
-
     function mToken() public view returns (address) {
         return getAddress(ConstantsLib.MTOKEN_SLOT);
     }
@@ -574,6 +582,4 @@ contract MorphoLoopingStrategy is BaseUpgradeableStrategy {
     function finalizeUpgrade() external onlyGovernance updateSupplyInTheEnd {
         _finalizeUpgrade();
     }
-
-    receive() external payable {}
 }

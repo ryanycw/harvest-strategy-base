@@ -2,70 +2,75 @@
 pragma solidity >=0.6.2;
 
 interface IUniswapV2Router01 {
-  function factory() external pure returns (address);
+    function factory() external pure returns (address);
 
-  function WETH() external pure returns (address);
+    function WETH() external pure returns (address);
 
-  function addLiquidity(
-    address tokenA,
-    address tokenB,
-    uint amountADesired,
-    uint amountBDesired,
-    uint amountAMin,
-    uint amountBMin,
-    address to,
-    uint deadline
-  ) external returns (uint amountA, uint amountB, uint liquidity);
+    function addLiquidity(
+        address tokenA,
+        address tokenB,
+        uint256 amountADesired,
+        uint256 amountBDesired,
+        uint256 amountAMin,
+        uint256 amountBMin,
+        address to,
+        uint256 deadline
+    ) external returns (uint256 amountA, uint256 amountB, uint256 liquidity);
 
-  function addLiquidityETH(
-    address token,
-    uint amountTokenDesired,
-    uint amountTokenMin,
-    uint amountETHMin,
-    address to,
-    uint deadline
-  ) external payable returns (uint amountToken, uint amountETH, uint liquidity);
+    function addLiquidityETH(
+        address token,
+        uint256 amountTokenDesired,
+        uint256 amountTokenMin,
+        uint256 amountETHMin,
+        address to,
+        uint256 deadline
+    ) external payable returns (uint256 amountToken, uint256 amountETH, uint256 liquidity);
 
-  function removeLiquidity(
-    address tokenA,
-    address tokenB,
-    uint liquidity,
-    uint amountAMin,
-    uint amountBMin,
-    address to,
-    uint deadline
-  ) external returns (uint amountA, uint amountB);
+    function removeLiquidity(
+        address tokenA,
+        address tokenB,
+        uint256 liquidity,
+        uint256 amountAMin,
+        uint256 amountBMin,
+        address to,
+        uint256 deadline
+    ) external returns (uint256 amountA, uint256 amountB);
 
-  function removeLiquidityETH(
-    address token,
-    uint liquidity,
-    uint amountTokenMin,
-    uint amountETHMin,
-    address to,
-    uint deadline
-  ) external returns (uint amountToken, uint amountETH);
+    function removeLiquidityETH(
+        address token,
+        uint256 liquidity,
+        uint256 amountTokenMin,
+        uint256 amountETHMin,
+        address to,
+        uint256 deadline
+    ) external returns (uint256 amountToken, uint256 amountETH);
 
-  function removeLiquidityWithPermit(
-    address tokenA,
-    address tokenB,
-    uint liquidity,
-    uint amountAMin,
-    uint amountBMin,
-    address to,
-    uint deadline,
-    bool approveMax, uint8 v, bytes32 r, bytes32 s
-  ) external returns (uint amountA, uint amountB);
+    function removeLiquidityWithPermit(
+        address tokenA,
+        address tokenB,
+        uint256 liquidity,
+        uint256 amountAMin,
+        uint256 amountBMin,
+        address to,
+        uint256 deadline,
+        bool approveMax,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external returns (uint256 amountA, uint256 amountB);
 
-  function removeLiquidityETHWithPermit(
-    address token,
-    uint liquidity,
-    uint amountTokenMin,
-    uint amountETHMin,
-    address to,
-    uint deadline,
-    bool approveMax, uint8 v, bytes32 r, bytes32 s
-  ) external returns (uint amountToken, uint amountETH);
+    function removeLiquidityETHWithPermit(
+        address token,
+        uint256 liquidity,
+        uint256 amountTokenMin,
+        uint256 amountETHMin,
+        address to,
+        uint256 deadline,
+        bool approveMax,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external returns (uint256 amountToken, uint256 amountETH);
 
-  function quote(uint amountA, uint reserveA, uint reserveB) external pure returns (uint amountB);
-
+    function quote(uint256 amountA, uint256 reserveA, uint256 reserveB) external pure returns (uint256 amountB);
 }

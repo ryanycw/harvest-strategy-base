@@ -2,8 +2,8 @@
 pragma solidity 0.8.21;
 pragma experimental ABIEncoderV2;
 
-import "@openzeppelin/contracts/token/ERC721/IERC721Metadata.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721Enumerable.sol";
+import "@openzeppelin/contracts/interfaces/IERC721Metadata.sol";
+import "@openzeppelin/contracts/interfaces/IERC721Enumerable.sol";
 
 import "./IERC721Permit.sol";
 import "./IERC4906.sol";

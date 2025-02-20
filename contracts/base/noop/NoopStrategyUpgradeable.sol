@@ -1,14 +1,11 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity 0.8.21;
 
-import "@openzeppelin/contracts/math/Math.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "../interface/IVault.sol";
 import "../upgradability/BaseUpgradeableStrategy.sol";
 
 contract NoopStrategyUpgradeable is BaseUpgradeableStrategy {
-    using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
     constructor() public BaseUpgradeableStrategy() {}

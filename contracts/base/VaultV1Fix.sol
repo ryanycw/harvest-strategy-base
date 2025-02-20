@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Unlicense
 pragma solidity 0.8.21;
 
-import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {IERC4626} from "./interface/IERC4626.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
@@ -13,30 +14,15 @@ import "./interface/IUpgradeSource.sol";
 import "./inheritance/ControllableInit.sol";
 import "./VaultStorage.sol";
 
-contract VaultV1 is ERC20Upgradeable, IUpgradeSource, ControllableInit, VaultStorage {
+contract VaultV1Fix is ERC20Upgradeable, IUpgradeSource, ControllableInit, VaultStorage {
     using Address for address;
     using SafeERC20 for IERC20;
 
-    /**
-     * Caller has exchanged assets for shares, and transferred those shares to owner.
-     *
-     * MUST be emitted when tokens are deposited into the Vault via the mint and deposit methods.
-     */
-    event Deposit(address indexed sender, address indexed receiver, uint256 assets, uint256 shares);
-
-    /**
-     * Caller has exchanged shares, owned by owner, for assets, and transferred those assets to receiver.
-     *
-     * MUST be emitted when shares are withdrawn from the Vault in ERC4626.redeem or ERC4626.withdraw methods.
-     */
-    event Withdraw(
-        address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares
-    );
     event Invest(uint256 amount);
     event StrategyAnnounced(address newStrategy, uint256 time);
     event StrategyChanged(address newStrategy, address oldStrategy);
 
-    constructor() public {}
+    constructor() {}
 
     // the function is name differently to not cause inheritance clash in truffle and allows tests
     function initializeVault(
@@ -207,7 +193,7 @@ contract VaultV1 is ERC20Upgradeable, IUpgradeSource, ControllableInit, VaultSto
                 IStrategy(strategy()).withdrawAllToVault();
             }
             _setStrategy(_strategy);
-            IERC20(underlying()).safeIncreaseAllowance(address(strategy()), type(uint256).max);
+            IERC20(underlying()).approve(address(strategy()), type(uint256).max);
         }
         finalizeStrategyUpdate();
     }
@@ -294,7 +280,7 @@ contract VaultV1 is ERC20Upgradeable, IUpgradeSource, ControllableInit, VaultSto
         _mint(beneficiary, toMint);
 
         // update the contribution amount for the beneficiary
-        emit Deposit(sender, beneficiary, amount, toMint);
+        emit IERC4626.Deposit(sender, beneficiary, amount, toMint);
         return toMint;
     }
 
@@ -330,7 +316,7 @@ contract VaultV1 is ERC20Upgradeable, IUpgradeSource, ControllableInit, VaultSto
         IERC20(underlying()).safeTransfer(receiver, underlyingAmountToWithdraw);
 
         // update the withdrawal amount for the holder
-        emit Withdraw(sender, receiver, owner, underlyingAmountToWithdraw, numberOfShares);
+        emit IERC4626.Withdraw(sender, receiver, owner, underlyingAmountToWithdraw, numberOfShares);
         return underlyingAmountToWithdraw;
     }
 

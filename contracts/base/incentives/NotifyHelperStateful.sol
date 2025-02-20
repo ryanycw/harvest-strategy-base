@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Unlicense
 pragma solidity 0.8.21;
 
-import "@openzeppelin/contracts-upgradeable/math/SafeMathUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/SafeERC20Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "../inheritance/Controllable.sol";
 import "../PotPool.sol";
@@ -19,8 +18,7 @@ interface INotifyHelperAmpliFARM {
 }
 
 contract NotifyHelperStateful is Controllable {
-    using SafeMathUpgradeable for uint256;
-    using SafeERC20Upgradeable for IERC20Upgradeable;
+    using SafeERC20 for IERC20;
 
     event ChangerSet(address indexed account, bool value);
     event NotifierSet(address indexed account, bool value);
@@ -100,7 +98,7 @@ contract NotifyHelperStateful is Controllable {
     /// The only whitelisted entity here would be the minter helper
     function notifyPools(uint256 total, uint256 timestamp) public onlyNotifier {
         // transfer the tokens from the msg.sender to here
-        IERC20Upgradeable(rewardToken).safeTransferFrom(msg.sender, address(this), total);
+        IERC20(rewardToken).safeTransferFrom(msg.sender, address(this), total);
 
         // prepare the notification data
         WorkingNotification memory ampliFARM = WorkingNotification(
@@ -120,34 +118,34 @@ contract NotifyHelperStateful is Controllable {
             Notification storage notification = notifications[i];
             if (notification.notificationType == NotificationType.TRANSFER) {
                 // simple transfer
-                IERC20Upgradeable(rewardToken).safeTransfer(
-                    notification.poolAddress, total.mul(notification.percentage).div(totalPercentage)
+                IERC20(rewardToken).safeTransfer(
+                    notification.poolAddress, total * notification.percentage / totalPercentage
                 );
             } else {
                 // FARM or ampliFARM notification
                 WorkingNotification memory toUse =
                     notification.notificationType == NotificationType.FARM ? regular : ampliFARM;
-                toUse.amounts[toUse.counter] = total.mul(notification.percentage).div(totalPercentage);
+                toUse.amounts[toUse.counter] = total * notification.percentage / totalPercentage;
                 if (notification.vests) {
-                    uint256 toVest = toUse.amounts[toUse.counter].mul(VESTING_NUMERATOR).div(VESTING_DENOMINATOR);
-                    toUse.amounts[toUse.counter] = toUse.amounts[toUse.counter].sub(toVest);
-                    vestingAmount = vestingAmount.add(toVest);
+                    uint256 toVest = toUse.amounts[toUse.counter] * VESTING_NUMERATOR / VESTING_DENOMINATOR;
+                    toUse.amounts[toUse.counter] = toUse.amounts[toUse.counter] - toVest;
+                    vestingAmount = vestingAmount + toVest;
                     emit Vesting(notification.poolAddress, toVest);
                 }
                 toUse.pools[toUse.counter] = notification.poolAddress;
-                toUse.checksum = toUse.checksum.add(toUse.amounts[toUse.counter]);
-                toUse.counter = toUse.counter.add(1);
+                toUse.checksum = toUse.checksum + toUse.amounts[toUse.counter];
+                toUse.counter = toUse.counter + 1;
             }
         }
 
         // handle vesting
         if (vestingAmount > 0) {
-            IERC20Upgradeable(rewardToken).safeTransfer(vestingEscrow, vestingAmount);
+            IERC20(rewardToken).safeTransfer(vestingEscrow, vestingAmount);
         }
 
         // ampliFARM notifications
         if (ampliFARM.checksum > 0) {
-            IERC20Upgradeable(rewardToken).approve(notifyHelperAmpliFARM, ampliFARM.checksum);
+            IERC20(rewardToken).approve(notifyHelperAmpliFARM, ampliFARM.checksum);
             INotifyHelperAmpliFARM(notifyHelperAmpliFARM).notifyPools(
                 ampliFARM.amounts, ampliFARM.pools, ampliFARM.checksum
             );
@@ -155,16 +153,16 @@ contract NotifyHelperStateful is Controllable {
 
         // regular notifications
         if (regular.checksum > 0) {
-            IERC20Upgradeable(rewardToken).approve(notifyHelperRegular, regular.checksum);
+            IERC20(rewardToken).approve(notifyHelperRegular, regular.checksum);
             INotifyHelperGeneric(notifyHelperRegular).notifyPools(
                 regular.amounts, regular.pools, regular.checksum, rewardToken
             );
         }
 
         // send rest to the reserve
-        uint256 remainingBalance = IERC20Upgradeable(rewardToken).balanceOf(address(this));
+        uint256 remainingBalance = IERC20(rewardToken).balanceOf(address(this));
         if (remainingBalance > 0) {
-            IERC20Upgradeable(rewardToken).safeTransfer(reserve, remainingBalance);
+            IERC20(rewardToken).safeTransfer(reserve, remainingBalance);
         }
     }
 
@@ -239,11 +237,11 @@ contract NotifyHelperStateful is Controllable {
         uint256 index = poolToIndex[poolAddress];
         Notification storage notification = notifications[index];
 
-        totalPercentage = totalPercentage.sub(notification.percentage);
-        numbers[uint256(notification.notificationType)] = numbers[uint256(notification.notificationType)].sub(1);
+        totalPercentage = totalPercentage - notification.percentage;
+        numbers[uint256(notification.notificationType)] = numbers[uint256(notification.notificationType)] - 1;
 
         // move the last element here and pop from the array
-        notifications[index] = notifications[notifications.length.sub(1)];
+        notifications[index] = notifications[notifications.length - 1];
         poolToIndex[notifications[index].poolAddress] = index;
         poolToIndex[poolAddress] = 0;
         notifications.pop();
@@ -258,15 +256,15 @@ contract NotifyHelperStateful is Controllable {
         require(notificationExists(poolAddress), "notification does not exist");
         require(percentage > 0, "notification is 0");
         uint256 index = poolToIndex[poolAddress];
-        totalPercentage = totalPercentage.sub(notifications[index].percentage).add(percentage);
+        totalPercentage = totalPercentage - notifications[index].percentage + percentage;
         notifications[index].percentage = percentage;
         notifications[index].vests = vesting;
         if (notifications[index].notificationType != notificationType) {
             numbers[uint256(notifications[index].notificationType)] =
-                numbers[uint256(notifications[index].notificationType)].sub(1);
+                numbers[uint256(notifications[index].notificationType)] - 1;
             notifications[index].notificationType = notificationType;
             numbers[uint256(notifications[index].notificationType)] =
-                numbers[uint256(notifications[index].notificationType)].add(1);
+                numbers[uint256(notifications[index].notificationType)] + 1;
         }
     }
 
@@ -276,22 +274,23 @@ contract NotifyHelperStateful is Controllable {
         require(!notificationExists(poolAddress), "notification exists");
         require(percentage > 0, "notification is 0");
         require(
-            PotPool(poolAddress).getRewardTokenIndex(rewardToken) != uint256(-1), "Token not configured on pot pool"
+            PotPool(poolAddress).getRewardTokenIndex(rewardToken) != type(uint256).max,
+            "Token not configured on pot pool"
         );
         Notification memory notification = Notification(poolAddress, notificationType, percentage, vesting);
         notifications.push(notification);
-        totalPercentage = totalPercentage.add(notification.percentage);
-        numbers[uint256(notification.notificationType)] = numbers[uint256(notification.notificationType)].add(1);
-        poolToIndex[notification.poolAddress] = notifications.length.sub(1);
+        totalPercentage = totalPercentage + notification.percentage;
+        numbers[uint256(notification.notificationType)] = numbers[uint256(notification.notificationType)] + 1;
+        poolToIndex[notification.poolAddress] = notifications.length - 1;
         require(notificationExists(poolAddress), "notification was not added");
     }
 
     /// emergency draining of tokens and ETH as there should be none staying here
     function emergencyDrain(address token, uint256 amount) public onlyGovernance {
         if (token == address(0)) {
-            msg.sender.transfer(amount);
+            payable(msg.sender).transfer(amount);
         } else {
-            IERC20Upgradeable(token).safeTransfer(msg.sender, amount);
+            IERC20(token).safeTransfer(msg.sender, amount);
         }
     }
 
@@ -306,8 +305,8 @@ contract NotifyHelperStateful is Controllable {
         for (uint256 i = 0; i < notifications.length; i++) {
             Notification storage notification = notifications[i];
             pools[i] = notification.poolAddress;
-            percentages[i] = notification.percentage.mul(1000000).div(totalPercentage);
-            amounts[i] = notification.percentage.mul(totalAmount).div(totalPercentage);
+            percentages[i] = notification.percentage * 1000000 / totalPercentage;
+            amounts[i] = notification.percentage * totalAmount / totalPercentage;
         }
         return (pools, percentages, amounts);
     }

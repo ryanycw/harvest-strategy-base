@@ -1,9 +1,8 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity 0.8.21;
 
-import "@openzeppelin/contracts/math/Math.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import "../../base/interface/IUniversalLiquidator.sol";
 import "../../base/interface/IVault.sol";
 import "../../base/upgradability/BaseUpgradeableStrategy.sol";
@@ -11,7 +10,6 @@ import "../../base/interface/compound/IComet.sol";
 import "../../base/interface/compound/ICometRewards.sol";
 
 contract CompoundStrategy is BaseUpgradeableStrategy {
-    using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
     address public constant harvestMSIG = address(0x97b3e5712CDE7Db13e939a188C8CA90Db5B05131);
@@ -60,7 +58,7 @@ contract CompoundStrategy is BaseUpgradeableStrategy {
     }
 
     function totalFeeNumerator() public view returns (uint256) {
-        return strategistFeeNumerator().add(platformFeeNumerator()).add(profitSharingNumerator());
+        return strategistFeeNumerator() + platformFeeNumerator() + profitSharingNumerator();
     }
 
     function pendingFee() public view returns (uint256) {
@@ -70,10 +68,10 @@ contract CompoundStrategy is BaseUpgradeableStrategy {
     function _accrueFee() internal {
         uint256 fee;
         if (currentSupplied() > storedSupplied()) {
-            uint256 balanceIncrease = currentSupplied().sub(storedSupplied());
-            fee = balanceIncrease.mul(totalFeeNumerator()).div(feeDenominator());
+            uint256 balanceIncrease = currentSupplied() - storedSupplied();
+            fee = balanceIncrease * totalFeeNumerator() / feeDenominator();
         }
-        setUint256(_PENDING_FEE_SLOT, pendingFee().add(fee));
+        setUint256(_PENDING_FEE_SLOT, pendingFee() + fee);
         _updateStoredSupplied();
     }
 
@@ -81,12 +79,11 @@ contract CompoundStrategy is BaseUpgradeableStrategy {
         _accrueFee();
         uint256 fee = pendingFee();
         if (fee > 100) {
-            uint256 balanceIncrease = fee.mul(feeDenominator()).div(totalFeeNumerator());
+            uint256 balanceIncrease = fee * feeDenominator() / totalFeeNumerator();
             _withdrawUnderlyingFromPool(fee);
             address _underlying = underlying();
             if (IERC20(_underlying).balanceOf(address(this)) < fee) {
-                balanceIncrease =
-                    IERC20(_underlying).balanceOf(address(this)).mul(feeDenominator()).div(totalFeeNumerator());
+                balanceIncrease = IERC20(_underlying).balanceOf(address(this)) * feeDenominator() / totalFeeNumerator();
             }
             _notifyProfitInRewardToken(_underlying, balanceIncrease);
             setUint256(_PENDING_FEE_SLOT, 0);
@@ -107,15 +104,14 @@ contract CompoundStrategy is BaseUpgradeableStrategy {
     }
 
     function _withdrawUnderlyingFromPool(uint256 amount) internal {
-        IComet(market()).withdraw(underlying(), Math.min(currentSupplied().sub(pendingFee().add(1)), amount));
+        IComet(market()).withdraw(underlying(), Math.min(currentSupplied() - (pendingFee() + 1), amount));
     }
 
     function _enterRewardPool() internal {
         address underlying_ = underlying();
         address market_ = market();
         uint256 entireBalance = IERC20(underlying_).balanceOf(address(this));
-        IERC20(underlying_).safeApprove(market_, 0);
-        IERC20(underlying_).safeApprove(market_, entireBalance);
+        IERC20(underlying_).safeIncreaseAllowance(market_, entireBalance);
         IComet(market_).supply(underlying_, entireBalance);
     }
 
@@ -167,8 +163,7 @@ contract CompoundStrategy is BaseUpgradeableStrategy {
                 continue;
             }
             if (token != _rewardToken) {
-                IERC20(token).safeApprove(_universalLiquidator, 0);
-                IERC20(token).safeApprove(_universalLiquidator, rewardBalance);
+                IERC20(token).safeIncreaseAllowance(_universalLiquidator, rewardBalance);
                 IUniversalLiquidator(_universalLiquidator).swap(token, _rewardToken, rewardBalance, 1, address(this));
             }
         }
@@ -182,8 +177,7 @@ contract CompoundStrategy is BaseUpgradeableStrategy {
 
         address _underlying = underlying();
         if (_underlying != _rewardToken) {
-            IERC20(_rewardToken).safeApprove(_universalLiquidator, 0);
-            IERC20(_rewardToken).safeApprove(_universalLiquidator, remainingRewardBalance);
+            IERC20(_rewardToken).safeIncreaseAllowance(_universalLiquidator, remainingRewardBalance);
             IUniversalLiquidator(_universalLiquidator).swap(
                 _rewardToken, _underlying, remainingRewardBalance, 1, address(this)
             );
@@ -197,7 +191,7 @@ contract CompoundStrategy is BaseUpgradeableStrategy {
         _handleFee();
         _claimReward();
         _liquidateReward();
-        _withdrawUnderlyingFromPool(currentSupplied().sub(pendingFee().add(1)));
+        _withdrawUnderlyingFromPool(currentSupplied() - (pendingFee() + 1));
         address underlying_ = underlying();
         IERC20(underlying_).safeTransfer(vault(), IERC20(underlying_).balanceOf(address(this)));
         _updateStoredSupplied();
@@ -216,7 +210,7 @@ contract CompoundStrategy is BaseUpgradeableStrategy {
         if (_amount > entireBalance) {
             // While we have the check above, we still using SafeMath below
             // for the peace of mind (in case something gets changed in between)
-            uint256 needToWithdraw = _amount.sub(entireBalance);
+            uint256 needToWithdraw = _amount - entireBalance;
             uint256 toWithdraw = Math.min(currentSupplied(), needToWithdraw);
             _withdrawUnderlyingFromPool(toWithdraw);
         }
@@ -236,7 +230,7 @@ contract CompoundStrategy is BaseUpgradeableStrategy {
         // both are in the units of "underlying"
         // The second part is needed because there is the emergency exit mechanism
         // which would break the assumption that all the funds are always inside of the reward pool
-        return IERC20(underlying()).balanceOf(address(this)).add(storedSupplied()).sub(pendingFee());
+        return IERC20(underlying()).balanceOf(address(this)) + storedSupplied() - pendingFee();
     }
 
     /*

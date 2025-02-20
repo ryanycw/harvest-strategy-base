@@ -2,9 +2,9 @@
 pragma solidity 0.8.21;
 
 import "./interface/IERC4626.sol";
-import "./VaultV1.sol";
+import "./VaultV1Fix.sol";
 
-contract VaultV2 is IERC4626, VaultV1 {
+contract VaultV2 is IERC4626, VaultV1Fix {
     /// By default, the constant `10` is a uint8. This implicitly converts it to `uint256`
     uint256 public constant TEN = 10;
 
@@ -25,7 +25,7 @@ contract VaultV2 is IERC4626, VaultV1 {
     }
 
     function maxDeposit(address /*caller*/ ) public view override returns (uint256) {
-        return uint256(-1);
+        return type(uint256).max;
     }
 
     function previewDeposit(uint256 _assets) public view override returns (uint256) {
@@ -38,7 +38,7 @@ contract VaultV2 is IERC4626, VaultV1 {
     }
 
     function maxMint(address /*caller*/ ) public view override returns (uint256) {
-        return uint256(-1);
+        return type(uint256).max;
     }
 
     function previewMint(uint256 _shares) public view override returns (uint256) {

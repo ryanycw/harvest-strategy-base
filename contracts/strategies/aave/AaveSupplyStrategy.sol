@@ -1,16 +1,13 @@
 // SPDX-License-Identifier: Unlicense
 pragma solidity 0.8.21;
 
-import "@openzeppelin/contracts/math/Math.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "../../base/interface/IUniversalLiquidator.sol";
 import "../../base/upgradability/BaseUpgradeableStrategy.sol";
 import "../../base/interface/aave/IAToken.sol";
 import "../../base/interface/aave/IPool.sol";
 
 contract AaveSupplyStrategy is BaseUpgradeableStrategy {
-    using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
     address public constant harvestMSIG = address(0x97b3e5712CDE7Db13e939a188C8CA90Db5B05131);
@@ -49,7 +46,7 @@ contract AaveSupplyStrategy is BaseUpgradeableStrategy {
     }
 
     function totalFeeNumerator() public view returns (uint256) {
-        return strategistFeeNumerator().add(platformFeeNumerator()).add(profitSharingNumerator());
+        return strategistFeeNumerator() + platformFeeNumerator() + profitSharingNumerator();
     }
 
     function pendingFee() public view returns (uint256) {
@@ -59,10 +56,10 @@ contract AaveSupplyStrategy is BaseUpgradeableStrategy {
     function _accrueFee() internal {
         uint256 fee;
         if (currentSupplied() > storedSupplied()) {
-            uint256 balanceIncrease = currentSupplied().sub(storedSupplied());
-            fee = balanceIncrease.mul(totalFeeNumerator()).div(feeDenominator());
+            uint256 balanceIncrease = currentSupplied() - storedSupplied();
+            fee = balanceIncrease * totalFeeNumerator() / feeDenominator();
         }
-        setUint256(_PENDING_FEE_SLOT, pendingFee().add(fee));
+        setUint256(_PENDING_FEE_SLOT, pendingFee() + fee);
         _updateStoredSupplied();
     }
 
@@ -70,12 +67,11 @@ contract AaveSupplyStrategy is BaseUpgradeableStrategy {
         _accrueFee();
         uint256 fee = pendingFee();
         if (fee > 100) {
-            uint256 balanceIncrease = fee.mul(feeDenominator()).div(totalFeeNumerator());
+            uint256 balanceIncrease = fee * feeDenominator() / totalFeeNumerator();
             _redeem(fee);
             address _underlying = underlying();
             if (IERC20(_underlying).balanceOf(address(this)) < fee) {
-                balanceIncrease =
-                    IERC20(_underlying).balanceOf(address(this)).mul(feeDenominator()).div(totalFeeNumerator());
+                balanceIncrease = IERC20(_underlying).balanceOf(address(this)) * feeDenominator() / totalFeeNumerator();
             }
             _notifyProfitInRewardToken(_underlying, balanceIncrease);
             setUint256(_PENDING_FEE_SLOT, 0);
@@ -118,7 +114,7 @@ contract AaveSupplyStrategy is BaseUpgradeableStrategy {
             IERC20(_underlying).safeTransfer(vault(), amountUnderlying);
             return;
         }
-        uint256 toRedeem = amountUnderlying.sub(balance);
+        uint256 toRedeem = amountUnderlying - balance;
         // get some of the underlying
         _redeem(toRedeem);
         // transfer the amount requested (or the amount we have) back to vault()
@@ -153,7 +149,7 @@ contract AaveSupplyStrategy is BaseUpgradeableStrategy {
      */
     function investedUnderlyingBalance() public view returns (uint256) {
         // underlying in this strategy + underlying redeemable from Radiant - debt
-        return IERC20(underlying()).balanceOf(address(this)).add(storedSupplied()).sub(pendingFee());
+        return IERC20(underlying()).balanceOf(address(this)) + storedSupplied() - pendingFee();
     }
 
     /**
@@ -165,8 +161,7 @@ contract AaveSupplyStrategy is BaseUpgradeableStrategy {
         }
         address _underlying = underlying();
         address _pool = IAToken(aToken()).POOL();
-        IERC20(_underlying).safeApprove(_pool, 0);
-        IERC20(_underlying).safeApprove(_pool, amount);
+        IERC20(_underlying).safeIncreaseAllowance(_pool, amount);
         IPool(_pool).supply(_underlying, amount, address(this), 0);
     }
 
@@ -180,7 +175,7 @@ contract AaveSupplyStrategy is BaseUpgradeableStrategy {
 
     function _redeemMaximum() internal {
         if (currentSupplied() > 0) {
-            _redeem(currentSupplied().sub(pendingFee().add(1)));
+            _redeem(currentSupplied() - pendingFee() - 1);
         }
     }
 

@@ -6,16 +6,15 @@ import "./interface/IController.sol";
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/math/Math.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 abstract contract IRewardDistributionRecipient is Ownable {
     mapping(address => bool) public rewardDistribution;
 
-    constructor(address[] memory _rewardDistributions) public {
+    constructor(address[] memory _rewardDistributions) {
         // multisig on Base
         rewardDistribution[0x97b3e5712CDE7Db13e939a188C8CA90Db5B05131] = true;
         // NotifyHelper
@@ -44,7 +43,6 @@ abstract contract IRewardDistributionRecipient is Ownable {
 contract PotPool is IRewardDistributionRecipient, Controllable, ERC20 {
     using Address for address;
     using SafeERC20 for IERC20;
-    using SafeMath for uint256;
 
     address public lpToken;
     uint256 public duration; // making it not a constant is less gas efficient, but portable
@@ -141,9 +139,9 @@ contract PotPool is IRewardDistributionRecipient, Controllable, ERC20 {
         string memory _symbol,
         uint8 _decimals
     )
-        public
-        ERC20(_name, _symbol)
         IRewardDistributionRecipient(_rewardDistribution)
+        Ownable(msg.sender)
+        ERC20(_name, _symbol)
         Controllable(_storage) // only used for referencing the grey list
     {
         require(_decimals == ERC20(_lpToken).decimals(), "decimals has to be aligned with the lpToken");
@@ -181,11 +179,8 @@ contract PotPool is IRewardDistributionRecipient, Controllable, ERC20 {
         if (totalSupply() == 0) {
             return rewardPerTokenStoredForToken[rt];
         }
-        return rewardPerTokenStoredForToken[rt].add(
-            lastTimeRewardApplicable(rt).sub(lastUpdateTimeForToken[rt]).mul(rewardRateForToken[rt]).mul(1e18).div(
-                totalSupply()
-            )
-        );
+        return rewardPerTokenStoredForToken[rt]
+            + (lastTimeRewardApplicable(rt) - lastUpdateTimeForToken[rt]) * rewardRateForToken[rt] * 1e18 / totalSupply();
     }
 
     function earned(uint256 i, address account) public view returns (uint256) {
@@ -197,16 +192,15 @@ contract PotPool is IRewardDistributionRecipient, Controllable, ERC20 {
     }
 
     function earned(address rt, address account) public view returns (uint256) {
-        return stakedBalanceOf[account].mul(rewardPerToken(rt).sub(userRewardPerTokenPaidForToken[rt][account])).div(
-            1e18
-        ).add(rewardsForToken[rt][account]);
+        return stakedBalanceOf[account] * (rewardPerToken(rt) - userRewardPerTokenPaidForToken[rt][account]) / 1e18
+            + rewardsForToken[rt][account];
     }
 
     function stake(uint256 amount) public updateRewards(msg.sender) {
         require(amount > 0, "Cannot stake 0");
         recordSmartContract();
         super._mint(msg.sender, amount); // ERC20 is used as a staking receipt
-        stakedBalanceOf[msg.sender] = stakedBalanceOf[msg.sender].add(amount);
+        stakedBalanceOf[msg.sender] = stakedBalanceOf[msg.sender] + amount;
         IERC20(lpToken).safeTransferFrom(msg.sender, address(this), amount);
         emit Staked(msg.sender, amount);
     }
@@ -214,7 +208,7 @@ contract PotPool is IRewardDistributionRecipient, Controllable, ERC20 {
     function withdraw(uint256 amount) public updateRewards(msg.sender) {
         require(amount > 0, "Cannot withdraw 0");
         super._burn(msg.sender, amount);
-        stakedBalanceOf[msg.sender] = stakedBalanceOf[msg.sender].sub(amount);
+        stakedBalanceOf[msg.sender] = stakedBalanceOf[msg.sender] - amount;
         IERC20(lpToken).safeTransfer(msg.sender, amount);
         emit Withdrawn(msg.sender, amount);
     }
@@ -286,13 +280,13 @@ contract PotPool is IRewardDistributionRecipient, Controllable, ERC20 {
     }
 
     function addRewardToken(address rt) public onlyGovernanceOrRewardDistribution {
-        require(getRewardTokenIndex(rt) == uint256(-1), "Reward token already exists");
+        require(getRewardTokenIndex(rt) == type(uint256).max, "Reward token already exists");
         rewardTokens.push(rt);
     }
 
     function removeRewardToken(address rt) public onlyGovernanceOrRewardDistribution {
         uint256 i = getRewardTokenIndex(rt);
-        require(i != uint256(-1), "Reward token does not exists");
+        require(i != type(uint256).max, "Reward token does not exists");
         require(
             periodFinishForToken[rewardTokens[i]] < block.timestamp, "Can only remove when the reward period has passed"
         );
@@ -314,7 +308,7 @@ contract PotPool is IRewardDistributionRecipient, Controllable, ERC20 {
                 return i;
             }
         }
-        return uint256(-1);
+        return type(uint256).max;
     }
 
     function notifyTargetRewardAmount(address _rewardToken, uint256 reward)
@@ -324,20 +318,20 @@ contract PotPool is IRewardDistributionRecipient, Controllable, ERC20 {
         updateRewards(address(0))
     {
         // overflow fix according to https://sips.synthetix.io/sips/sip-77
-        require(reward < uint256(-1) / 1e18, "the notified reward cannot invoke multiplication overflow");
+        require(reward < type(uint256).max / 1e18, "the notified reward cannot invoke multiplication overflow");
 
         uint256 i = getRewardTokenIndex(_rewardToken);
-        require(i != uint256(-1), "rewardTokenIndex not found");
+        require(i != type(uint256).max, "rewardTokenIndex not found");
 
         if (block.timestamp >= periodFinishForToken[_rewardToken]) {
-            rewardRateForToken[_rewardToken] = reward.div(duration);
+            rewardRateForToken[_rewardToken] = reward / duration;
         } else {
-            uint256 remaining = periodFinishForToken[_rewardToken].sub(block.timestamp);
-            uint256 leftover = remaining.mul(rewardRateForToken[_rewardToken]);
-            rewardRateForToken[_rewardToken] = reward.add(leftover).div(duration);
+            uint256 remaining = periodFinishForToken[_rewardToken] - block.timestamp;
+            uint256 leftover = remaining * rewardRateForToken[_rewardToken];
+            rewardRateForToken[_rewardToken] = reward + leftover / duration;
         }
         lastUpdateTimeForToken[_rewardToken] = block.timestamp;
-        periodFinishForToken[_rewardToken] = block.timestamp.add(duration);
+        periodFinishForToken[_rewardToken] = block.timestamp + duration;
         emit RewardAdded(_rewardToken, reward);
     }
 

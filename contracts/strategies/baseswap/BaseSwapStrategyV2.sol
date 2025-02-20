@@ -1,9 +1,8 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity 0.8.21;
 
-import "@openzeppelin/contracts/math/Math.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import "../../base/interface/uniswap/IUniswapV2Router02.sol";
 import "../../base/interface/uniswap/IUniswapV2Pair.sol";
 import "../../base/interface/IUniversalLiquidator.sol";
@@ -13,7 +12,6 @@ import "../../base/upgradability/BaseUpgradeableStrategy.sol";
 import "../../base/interface/baseswap/INFTPool.sol";
 
 contract BaseSwapStrategyV2 is BaseUpgradeableStrategy {
-    using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
     address public constant bswap = address(0x78a087d713Be963Bf307b18F2Ff8122EF9A63ae9);
@@ -85,8 +83,7 @@ contract BaseSwapStrategyV2 is BaseUpgradeableStrategy {
         address _underlying = underlying();
         address _rewardPool = rewardPool();
         uint256 entireBalance = IERC20(_underlying).balanceOf(address(this));
-        IERC20(_underlying).safeApprove(_rewardPool, 0);
-        IERC20(_underlying).safeApprove(_rewardPool, entireBalance);
+        IERC20(_underlying).safeIncreaseAllowance(_rewardPool, entireBalance);
         if (_rewardPoolBalance() > 0) {
             //We already have a position. Withdraw from staking, add to position, stake again.
             INFTPool(_rewardPool).addToPosition(posId(), entireBalance);
@@ -154,18 +151,17 @@ contract BaseSwapStrategyV2 is BaseUpgradeableStrategy {
                 continue;
             }
             if (token != _rewardToken) {
-                IERC20(token).safeApprove(_universalLiquidator, 0);
-                IERC20(token).safeApprove(_universalLiquidator, rewardBalance);
+                IERC20(token).safeIncreaseAllowance(_universalLiquidator, rewardBalance);
                 IUniversalLiquidator(_universalLiquidator).swap(token, _rewardToken, rewardBalance, 1, address(this));
             }
         }
 
         uint256 rewardBalance = IERC20(_rewardToken).balanceOf(address(this));
         uint256 notifyBalance;
-        if (_xBSXAmount > rewardBalance.mul(9)) {
-            notifyBalance = rewardBalance.mul(10);
+        if (_xBSXAmount > rewardBalance * 9 / 10) {
+            notifyBalance = rewardBalance * 10 / 10;
         } else {
-            notifyBalance = rewardBalance.add(_xBSXAmount);
+            notifyBalance = rewardBalance + _xBSXAmount;
         }
         _notifyProfitInRewardToken(_rewardToken, notifyBalance);
         uint256 remainingRewardBalance = IERC20(_rewardToken).balanceOf(address(this));
@@ -178,11 +174,10 @@ contract BaseSwapStrategyV2 is BaseUpgradeableStrategy {
         address token0 = IUniswapV2Pair(_underlying).token0();
         address token1 = IUniswapV2Pair(_underlying).token1();
 
-        uint256 toToken0 = remainingRewardBalance.div(2);
-        uint256 toToken1 = remainingRewardBalance.sub(toToken0);
+        uint256 toToken0 = remainingRewardBalance / 2;
+        uint256 toToken1 = remainingRewardBalance - toToken0;
 
-        IERC20(_rewardToken).safeApprove(_universalLiquidator, 0);
-        IERC20(_rewardToken).safeApprove(_universalLiquidator, remainingRewardBalance);
+        IERC20(_rewardToken).safeIncreaseAllowance(_universalLiquidator, remainingRewardBalance);
 
         uint256 token0Amount;
         if (token0 != _rewardToken) {
@@ -202,11 +197,9 @@ contract BaseSwapStrategyV2 is BaseUpgradeableStrategy {
         }
 
         // provide token1 and token2 to BaseSwap
-        IERC20(token0).safeApprove(baseRouter, 0);
-        IERC20(token0).safeApprove(baseRouter, token0Amount);
+        IERC20(token0).safeIncreaseAllowance(baseRouter, token0Amount);
 
-        IERC20(token1).safeApprove(baseRouter, 0);
-        IERC20(token1).safeApprove(baseRouter, token1Amount);
+        IERC20(token1).safeIncreaseAllowance(baseRouter, token1Amount);
 
         IUniswapV2Router02(baseRouter).addLiquidity(
             token0, token1, token0Amount, token1Amount, 1, 1, address(this), block.timestamp
@@ -221,8 +214,7 @@ contract BaseSwapStrategyV2 is BaseUpgradeableStrategy {
         address _xBSXVault = xBSXVault();
         address _potPool = potPool();
 
-        IERC20(xbsx).safeApprove(_xBSXVault, 0);
-        IERC20(xbsx).safeApprove(_xBSXVault, balance);
+        IERC20(xbsx).safeIncreaseAllowance(_xBSXVault, balance);
         IVault(_xBSXVault).deposit(balance);
 
         uint256 vaultBalance = IERC20(_xBSXVault).balanceOf(address(this));
@@ -254,7 +246,7 @@ contract BaseSwapStrategyV2 is BaseUpgradeableStrategy {
         if (_amount > entireBalance) {
             // While we have the check above, we still using SafeMath below
             // for the peace of mind (in case something gets changed in between)
-            uint256 needToWithdraw = _amount.sub(entireBalance);
+            uint256 needToWithdraw = _amount - entireBalance;
             uint256 toWithdraw = Math.min(_rewardPoolBalance(), needToWithdraw);
             _withdrawUnderlyingFromPool(toWithdraw);
         }
@@ -273,7 +265,7 @@ contract BaseSwapStrategyV2 is BaseUpgradeableStrategy {
         // both are in the units of "underlying"
         // The second part is needed because there is the emergency exit mechanism
         // which would break the assumption that all the funds are always inside of the reward pool
-        return _rewardPoolBalance().add(IERC20(underlying()).balanceOf(address(this)));
+        return _rewardPoolBalance() + IERC20(underlying()).balanceOf(address(this));
     }
 
     /*

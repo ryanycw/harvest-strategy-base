@@ -2,11 +2,9 @@
 pragma solidity 0.8.21;
 pragma experimental ABIEncoderV2;
 
-import "@openzeppelin/contracts/math/Math.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721HolderUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgradeable.sol";
 import "../../base/interface/IUniversalLiquidator.sol";
 import "../../base/interface/ICLVault.sol";
 import "../../base/upgradability/BaseUpgradeableStrategyCL.sol";
@@ -14,7 +12,6 @@ import "../../base/interface/aerodrome/ICLGauge.sol";
 import "../../base/interface/concentrated-liquidity/INonfungiblePositionManager.sol";
 
 contract AerodromeCLStrategy is BaseUpgradeableStrategyCL, ERC721HolderUpgradeable {
-    using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
     address public constant harvestMSIG = address(0x97b3e5712CDE7Db13e939a188C8CA90Db5B05131);
@@ -103,8 +100,7 @@ contract AerodromeCLStrategy is BaseUpgradeableStrategyCL, ERC721HolderUpgradeab
                 continue;
             }
             if (token != _rewardToken) {
-                IERC20(token).safeApprove(_universalLiquidator, 0);
-                IERC20(token).safeApprove(_universalLiquidator, rewardBalance);
+                IERC20(token).safeIncreaseAllowance(_universalLiquidator, rewardBalance);
                 IUniversalLiquidator(_universalLiquidator).swap(token, _rewardToken, rewardBalance, 1, address(this));
             }
         }
@@ -122,11 +118,10 @@ contract AerodromeCLStrategy is BaseUpgradeableStrategyCL, ERC721HolderUpgradeab
 
         (uint256 token0Weight,) = ICLVault(vault()).getCurrentTokenWeights();
 
-        uint256 toToken0 = remainingRewardBalance.mul(token0Weight).div(1e18);
-        uint256 toToken1 = remainingRewardBalance.sub(toToken0);
+        uint256 toToken0 = remainingRewardBalance * token0Weight / 1e18;
+        uint256 toToken1 = remainingRewardBalance - toToken0;
 
-        IERC20(_rewardToken).safeApprove(_universalLiquidator, 0);
-        IERC20(_rewardToken).safeApprove(_universalLiquidator, remainingRewardBalance);
+        IERC20(_rewardToken).safeIncreaseAllowance(_universalLiquidator, remainingRewardBalance);
 
         uint256 token0Amount;
         if (_token0 != _rewardToken && toToken0 > 0) {
@@ -147,11 +142,9 @@ contract AerodromeCLStrategy is BaseUpgradeableStrategyCL, ERC721HolderUpgradeab
 
         address _posManager = posManager();
         // provide token1 and token2 to BaseSwap
-        IERC20(_token0).safeApprove(_posManager, 0);
-        IERC20(_token0).safeApprove(_posManager, token0Amount);
+        IERC20(_token0).safeIncreaseAllowance(_posManager, token0Amount);
 
-        IERC20(_token1).safeApprove(_posManager, 0);
-        IERC20(_token1).safeApprove(_posManager, token1Amount);
+        IERC20(_token1).safeIncreaseAllowance(_posManager, token1Amount);
 
         INonfungiblePositionManager(_posManager).increaseLiquidity(
             INonfungiblePositionManager.IncreaseLiquidityParams({

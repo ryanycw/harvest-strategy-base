@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: Unlicense
 pragma solidity 0.8.21;
 
-import "@openzeppelin/contracts-upgradeable/math/SafeMathUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/SafeERC20Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
 import "../inheritance/Controllable.sol";
 import "../PotPool.sol";
 
 contract NotifyHelperGeneric is Controllable {
-    using SafeMathUpgradeable for uint256;
-    using SafeERC20Upgradeable for IERC20Upgradeable;
+    using SafeERC20 for IERC20;
 
     event WhitelistSet(address who, bool value);
 
@@ -23,7 +21,7 @@ contract NotifyHelperGeneric is Controllable {
         _;
     }
 
-    constructor(address _storage) public Controllable(_storage) {
+    constructor(address _storage) Controllable(_storage) {
         setWhitelist(governance(), true);
     }
 
@@ -48,10 +46,10 @@ contract NotifyHelperGeneric is Controllable {
         for (uint256 i = 0; i < pools.length; i++) {
             require(amounts[i] > 0, "Notify zero");
             require(!alreadyNotified[pools[i]], "Duplicate pool");
-            IERC20Upgradeable token = IERC20Upgradeable(_token);
+            IERC20 token = IERC20(_token);
             token.safeTransferFrom(msg.sender, pools[i], amounts[i]);
             PotPool(pools[i]).notifyTargetRewardAmount(_token, amounts[i]);
-            check = check.add(amounts[i]);
+            check = check + amounts[i];
             alreadyNotified[pools[i]] = true;
         }
         require(sum == check, "Wrong check sum");

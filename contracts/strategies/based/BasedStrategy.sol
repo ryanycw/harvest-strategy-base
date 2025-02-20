@@ -1,9 +1,8 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity 0.8.21;
 
-import "@openzeppelin/contracts/math/Math.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import "../../base/interface/IUniversalLiquidator.sol";
 import "../../base/interface/IVault.sol";
 import "../../base/upgradability/BaseUpgradeableStrategy.sol";
@@ -12,7 +11,6 @@ import "../../base/interface/aerodrome/IPool.sol";
 import "../../base/interface/aerodrome/IRouter.sol";
 
 contract BasedStrategy is BaseUpgradeableStrategy {
-    using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
     address public constant aeroRouter = address(0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43);
@@ -69,8 +67,7 @@ contract BasedStrategy is BaseUpgradeableStrategy {
         address underlying_ = underlying();
         address rewardPool_ = rewardPool();
         uint256 entireBalance = IERC20(underlying_).balanceOf(address(this));
-        IERC20(underlying_).safeApprove(rewardPool_, 0);
-        IERC20(underlying_).safeApprove(rewardPool_, entireBalance);
+        IERC20(underlying_).safeIncreaseAllowance(rewardPool_, entireBalance);
         IBasedRewards(rewardPool_).deposit(poolId(), entireBalance);
     }
 
@@ -127,8 +124,7 @@ contract BasedStrategy is BaseUpgradeableStrategy {
                 continue;
             }
             if (token != _rewardToken) {
-                IERC20(token).safeApprove(_universalLiquidator, 0);
-                IERC20(token).safeApprove(_universalLiquidator, rewardBalance);
+                IERC20(token).safeIncreaseAllowance(_universalLiquidator, rewardBalance);
                 IUniversalLiquidator(_universalLiquidator).swap(token, _rewardToken, rewardBalance, 1, address(this));
             }
         }
@@ -145,15 +141,15 @@ contract BasedStrategy is BaseUpgradeableStrategy {
         address token0 = IPool(_underlying).token0();
         address token1 = IPool(_underlying).token1();
 
-        uint256 toToken0 = remainingRewardBalance.div(2);
-        uint256 toToken1 = remainingRewardBalance.sub(toToken0);
+        uint256 toToken0 = remainingRewardBalance / 2;
+        uint256 toToken1 = remainingRewardBalance - toToken0;
 
         if (IPool(_underlying).stable()) {
             uint256 out0 = token0 != _rewardToken
-                ? IPool(_underlying).getAmountOut(toToken0, token1).add(IERC20(token0).balanceOf(address(this)))
+                ? IPool(_underlying).getAmountOut(toToken0, token1) + IERC20(token0).balanceOf(address(this))
                 : toToken0;
             uint256 out1 = token1 != _rewardToken
-                ? IPool(_underlying).getAmountOut(toToken1, token0).add(IERC20(token1).balanceOf(address(this)))
+                ? IPool(_underlying).getAmountOut(toToken1, token0) + IERC20(token1).balanceOf(address(this))
                 : toToken1;
             (uint256 amountA, uint256 amountB,) = IRouter(aeroRouter).quoteAddLiquidity(
                 token0, token1, true, IRouter(aeroRouter).defaultFactory(), out0, out1
@@ -163,8 +159,7 @@ contract BasedStrategy is BaseUpgradeableStrategy {
             toToken1 = remainingRewardBalance - toToken0;
         }
 
-        IERC20(_rewardToken).safeApprove(_universalLiquidator, 0);
-        IERC20(_rewardToken).safeApprove(_universalLiquidator, remainingRewardBalance);
+        IERC20(_rewardToken).safeIncreaseAllowance(_universalLiquidator, remainingRewardBalance);
 
         uint256 token0Amount;
         if (token0 != _rewardToken) {
@@ -184,11 +179,9 @@ contract BasedStrategy is BaseUpgradeableStrategy {
         }
 
         // provide token1 and token2 to BaseSwap
-        IERC20(token0).safeApprove(aeroRouter, 0);
-        IERC20(token0).safeApprove(aeroRouter, token0Amount);
+        IERC20(token0).safeIncreaseAllowance(aeroRouter, token0Amount);
 
-        IERC20(token1).safeApprove(aeroRouter, 0);
-        IERC20(token1).safeApprove(aeroRouter, token1Amount);
+        IERC20(token1).safeIncreaseAllowance(aeroRouter, token1Amount);
 
         IRouter(aeroRouter).addLiquidity(
             token0,
@@ -225,7 +218,7 @@ contract BasedStrategy is BaseUpgradeableStrategy {
         if (_amount > entireBalance) {
             // While we have the check above, we still using SafeMath below
             // for the peace of mind (in case something gets changed in between)
-            uint256 needToWithdraw = _amount.sub(entireBalance);
+            uint256 needToWithdraw = _amount - entireBalance;
             uint256 toWithdraw = Math.min(_rewardPoolBalance(), needToWithdraw);
             _withdrawUnderlyingFromPool(toWithdraw);
         }
@@ -244,7 +237,7 @@ contract BasedStrategy is BaseUpgradeableStrategy {
         // both are in the units of "underlying"
         // The second part is needed because there is the emergency exit mechanism
         // which would break the assumption that all the funds are always inside of the reward pool
-        return _rewardPoolBalance().add(IERC20(underlying()).balanceOf(address(this)));
+        return _rewardPoolBalance() + IERC20(underlying()).balanceOf(address(this));
     }
 
     /*

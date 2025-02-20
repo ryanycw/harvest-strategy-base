@@ -2,8 +2,7 @@
 pragma solidity 0.8.21;
 
 import "@openzeppelin/contracts/utils/Address.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import "./inheritance/Governable.sol";
@@ -17,7 +16,6 @@ import "./RewardForwarder.sol";
 contract Controller is Governable {
     using SafeERC20 for IERC20;
     using Address for address;
-    using SafeMath for uint256;
 
     // ========================= Fields =========================
 

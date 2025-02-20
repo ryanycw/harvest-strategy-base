@@ -60,7 +60,9 @@ contract MegaFactory is Ownable {
         emit DeploymentCompleted(id);
     }
 
-    constructor(address _storage, address _multisig) public {
+    constructor(address _storage, address _multisig)
+        Ownable(msg.sender)
+    {
         multisig = _multisig;
         actualStorage = _storage;
         setAuthorization(owner(), true);

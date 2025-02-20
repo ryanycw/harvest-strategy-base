@@ -5,14 +5,12 @@ import "./NotifyHelperStateful.sol";
 import "./NotifyHelperGeneric.sol";
 import "../inheritance/Controllable.sol";
 
-import "@openzeppelin/contracts-upgradeable/math/SafeMathUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/SafeERC20Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 
 contract GlobalIncentivesHelper is Controllable {
-    using SafeMathUpgradeable for uint256;
-    using SafeERC20Upgradeable for IERC20Upgradeable;
+    using SafeERC20 for IERC20;
 
     address public helperControlStorage;
     address public notifyHelperGeneric;
@@ -69,8 +67,8 @@ contract GlobalIncentivesHelper is Controllable {
         onlyNotifier
     {
         for (uint256 i = 0; i < tokens.length; i++) {
-            // IERC20Upgradeable(tokens[i]).safeTransferFrom(msg.sender, address(this), totals[i]);
-            IERC20Upgradeable(tokens[i]).approve(tokenToHelper[tokens[i]], totals[i]);
+            // IERC20(tokens[i]).safeTransferFrom(msg.sender, address(this), totals[i]);
+            IERC20(tokens[i]).approve(tokenToHelper[tokens[i]], totals[i]);
             NotifyHelperStateful(tokenToHelper[tokens[i]]).notifyPools(totals[i], timestamp);
         }
     }
@@ -149,9 +147,9 @@ contract GlobalIncentivesHelper is Controllable {
     /// emergency draining of tokens and ETH as there should be none staying here
     function emergencyDrain(address token, uint256 amount) public onlyGovernance {
         if (token == address(0)) {
-            msg.sender.transfer(amount);
+            payable(msg.sender).transfer(amount);
         } else {
-            IERC20Upgradeable(token).safeTransfer(msg.sender, amount);
+            IERC20(token).safeTransfer(msg.sender, amount);
         }
     }
 

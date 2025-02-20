@@ -1,18 +1,16 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity 0.8.21;
 
-import "@openzeppelin/contracts-upgradeable/proxy/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "./BaseUpgradeableStrategyStorage.sol";
 import "../inheritance/ControllableInit.sol";
 import "../interface/IController.sol";
 import "../interface/IRewardForwarder.sol";
 import "../interface/merkl/IDistributor.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 contract BaseUpgradeableStrategy is Initializable, ControllableInit, BaseUpgradeableStrategyStorage {
-    using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
     event ProfitsNotCollected(bool sell, bool floor);
@@ -60,7 +58,7 @@ contract BaseUpgradeableStrategy is Initializable, ControllableInit, BaseUpgrade
      */
     function scheduleUpgrade(address impl) public onlyGovernance {
         _setNextImplementation(impl);
-        _setNextImplementationTimestamp(block.timestamp.add(nextImplementationDelay()));
+        _setNextImplementationTimestamp(block.timestamp + nextImplementationDelay());
     }
 
     function _finalizeUpgrade() internal {
@@ -91,9 +89,9 @@ contract BaseUpgradeableStrategy is Initializable, ControllableInit, BaseUpgrade
     function _notifyProfitInRewardToken(address _rewardToken, uint256 _rewardBalance) internal {
         if (_rewardBalance > 10) {
             uint256 _feeDenominator = feeDenominator();
-            uint256 strategistFee = _rewardBalance.mul(strategistFeeNumerator()).div(_feeDenominator);
-            uint256 platformFee = _rewardBalance.mul(platformFeeNumerator()).div(_feeDenominator);
-            uint256 profitSharingFee = _rewardBalance.mul(profitSharingNumerator()).div(_feeDenominator);
+            uint256 strategistFee = _rewardBalance * strategistFeeNumerator() / _feeDenominator;
+            uint256 platformFee = _rewardBalance * platformFeeNumerator() / _feeDenominator;
+            uint256 profitSharingFee = _rewardBalance * profitSharingNumerator() / _feeDenominator;
 
             address strategyFeeRecipient = strategist();
             address platformFeeRecipient = IController(controller()).governance();
@@ -107,8 +105,7 @@ contract BaseUpgradeableStrategy is Initializable, ControllableInit, BaseUpgrade
             );
 
             address rewardForwarder = IController(controller()).rewardForwarder();
-            IERC20(_rewardToken).safeApprove(rewardForwarder, 0);
-            IERC20(_rewardToken).safeApprove(rewardForwarder, _rewardBalance);
+            IERC20(_rewardToken).safeIncreaseAllowance(rewardForwarder, _rewardBalance);
 
             // Distribute/send the fees
             IRewardForwarder(rewardForwarder).notifyFee(_rewardToken, profitSharingFee, strategistFee, platformFee);
